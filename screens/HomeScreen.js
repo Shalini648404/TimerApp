@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, StyleSheet, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, Button, FlatList, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Switch, Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Progress from 'react-native-progress';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 const HomeScreen = ({ navigation }) => {
   const [timers, setTimers] = useState([]);
@@ -9,6 +11,7 @@ const HomeScreen = ({ navigation }) => {
   const [completionModal, setCompletionModal] = useState({ visible: false, timerName: '' });
   const [newTimer, setNewTimer] = useState({ name: '', duration: '', category: '', halfwayAlert: false });
   const [modalVisible, setModalVisible] = useState(false);
+  const [halfwayModal, setHalfwayModal ] = useState({visible : false, timerName : ""});
 
   useEffect(() => {
     const loadTimers = async () => {
@@ -47,7 +50,8 @@ const HomeScreen = ({ navigation }) => {
   
             // Trigger halfway alert if enabled
             if (newRemaining === halfTime && timer.halfwayAlert && !timer.halfAlertTriggered) {
-              Alert.alert('Halfway Alert', `You're halfway through "${timer.name}"!`);
+        
+               setHalfwayModal({ visible: true, timerName: timer.name });
               return { ...timer, remaining: newRemaining, halfAlertTriggered: true };
             }
   
@@ -63,32 +67,7 @@ const HomeScreen = ({ navigation }) => {
     }, 1000);
     return () => clearInterval(interval);
   }, [timers]);
-/*  
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTimers(prevTimers =>
-        prevTimers.map(timer => {
-          if (timer.status === 'Running' && timer.remaining > 0) {
-            const newRemaining = timer.remaining - 1;
-            const halfTime = Math.floor(timer.duration / 2);
 
-            if (newRemaining === halfTime && timer.halfwayAlert && !timer.halfAlertTriggered) {
-              Alert.alert('Halfway Alert', `You're halfway through "${timer.name}"!`);
-              return { ...timer, remaining: newRemaining, halfAlertTriggered: true };
-            }
-
-            return { ...timer, remaining: newRemaining };
-          } else if (timer.remaining === 0 && timer.status === 'Running') {
-            saveToHistory(timer.name);
-            setCompletionModal({ visible: true, timerName: timer.name });
-            return { ...timer, status: 'Completed' };
-          }
-          return timer;
-        })
-      );
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [timers]);*/
 
   const saveToHistory = async (name) => {
     try {
@@ -101,9 +80,6 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const toggleCategory = category => {
-    setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }));
-  };
 
   const startTimer = id => {
     setTimers(prev => prev.map(timer => (timer.id === id ? { ...timer, status: 'Running' } : timer)));
@@ -129,6 +105,10 @@ const HomeScreen = ({ navigation }) => {
     setTimers(prev => prev.map(timer => (timer.category === category ? { ...timer, remaining: timer.duration, status: 'Paused', halfAlertTriggered: false } : timer)));
   };
 
+  const toggleCategory = category => {
+    setExpandedCategories(prev => ({ ...prev, [category]: !prev[category] }));
+  };
+
   const addNewTimer = () => {
     if (!newTimer.name || !newTimer.duration || !newTimer.category) {
       Alert.alert('Error', 'Please enter all fields');
@@ -150,6 +130,40 @@ const HomeScreen = ({ navigation }) => {
     setModalVisible(false);
   };
 
+const exportData = async () => {
+    try {
+      const historyData = await AsyncStorage.getItem('timerHistory');
+      if (!historyData) {
+        console.log('No history data to export.');
+        return;
+      }
+  
+      if (Platform.OS === 'web') {
+        // Web: Create a downloadable file
+        const blob = new Blob([historyData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'timer_history.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Mobile: Use expo-file-system
+        const fileUri = FileSystem.documentDirectory + 'timer_history.json';
+        await FileSystem.writeAsStringAsync(fileUri, historyData);
+        
+        // Share the file (optional)
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri);
+        }
+      }
+    } catch (error) {
+      console.error('Error exporting data:', error);
+    }
+  };
+
   const groupedTimers = timers.reduce((groups, timer) => {
     if (!groups[timer.category]) groups[timer.category] = [];
     groups[timer.category].push(timer);
@@ -161,6 +175,7 @@ const HomeScreen = ({ navigation }) => {
       <Text style={styles.heading}>Timers</Text>
       <Button title="Add Timer" onPress={() => setModalVisible(true)} />
       <Button title="View History" onPress={() => navigation.navigate('History')} />
+      <Button title="Export Data" onPress={exportData} />
       {Object.keys(groupedTimers).map(category => (
         <View key={category}>
           <TouchableOpacity onPress={() => toggleCategory(category)} style={styles.categoryHeader}>
@@ -189,6 +204,14 @@ const HomeScreen = ({ navigation }) => {
         </View>
       ))}
 
+    <Modal visible={halfwayModal.visible} transparent animationType="slide">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalText}>You're halfway through "{halfwayModal.timerName}"!</Text>
+            <Button title="OK" onPress={() => setHalfwayModal({ visible: false, timerName: '' })} />
+          </View>
+        </View>
+      </Modal>
       <Modal visible={completionModal.visible} transparent animationType="slide">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -204,6 +227,10 @@ const HomeScreen = ({ navigation }) => {
             <TextInput placeholder="Name" value={newTimer.name} onChangeText={text => setNewTimer({ ...newTimer, name: text })} style={styles.input} />
             <TextInput placeholder="Duration (seconds)" value={newTimer.duration} onChangeText={text => setNewTimer({ ...newTimer, duration: text })} keyboardType="numeric" style={styles.input} />
             <TextInput placeholder="Category" value={newTimer.category} onChangeText={text => setNewTimer({ ...newTimer, category: text })} style={styles.input} />
+       <View style={styles.switchContainer}>
+              <Text>Halfway Alert</Text>
+              <Switch value={newTimer.halfwayAlert} onValueChange={value => setNewTimer({ ...newTimer, halfwayAlert: value })} />
+            </View>
             <Button title="Add Timer" onPress={addNewTimer} />
             <Button title="Cancel" onPress={() => setModalVisible(false)} />
           </View>
@@ -222,8 +249,7 @@ const styles = StyleSheet.create({
     buttons: { flexDirection: 'row', gap: 10, marginTop: 5 },
     modalContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContent: { backgroundColor: 'white', padding: 20, borderRadius: 10, width: 300, alignItems: 'center' },
-    input: { borderWidth: 1, padding: 10, marginBottom: 10, width: '100%' }
+    input: { borderWidth: 1, padding: 10, marginBottom: 10, width: '100%' },
   });
 
 export default HomeScreen;
-

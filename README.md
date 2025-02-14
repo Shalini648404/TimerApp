@@ -17,7 +17,8 @@ A **React Native** application that allows users to create, manage, and track co
 ✅ **Grouped Timers** – Organize timers by category and manage them collectively.  
 ✅ **Start/Pause/Reset All** – Control all timers in a category at once.  
 ✅ **Intuitive UI** – Simple and easy-to-use design for quick access.  
-✅ **Asynchronous Storage** – Saves data even if the app is closed and reopened.  
+✅ **Asynchronous Storage** – Saves data even if the app is closed and reopened. 
+✅ **Exporting completion History** – Can export the completed tasks history. 
 
 ---
 
